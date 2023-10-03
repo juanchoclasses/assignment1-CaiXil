@@ -33,19 +33,26 @@ export class FormulaEvaluator {
 
     let result = this.extractTerm();
 
-    while (this._currentFormula.length && (this._currentFormula[0] === "+" || this._currentFormula[0] === "-")) {
+    while (this._currentFormula.length && ("+-".includes(this._currentFormula[0]))) {
       let operator = this._currentFormula.shift();
       let term = this.extractTerm();
       if (operator === "-") {
-        result -= term;
+        result = result - term;
       } else {
-        result += term;
+        result = result + term;
       }
     }
     this._lastResult = result;
     return result;
   }
 
+  /**
+   * 
+   * divide the formula into terms and calculate the result, where terms combine to the formula with + and -
+   * 
+   * @returns the result of the formula
+   * 
+   */
   private extractTerm(): number {
     // if there is error return the last result
     if (this._errorOccured) {
@@ -54,19 +61,19 @@ export class FormulaEvaluator {
 
     let result = this.extractFactor();
 
-    while (this._currentFormula.length > 0 && (this._currentFormula[0] === "*" || this._currentFormula[0] === "/")) {
+    while (this._currentFormula.length > 0 && ("*/".includes(this._currentFormula[0]))) {
       let operator = this._currentFormula.shift();
       let factor = this.extractFactor();
       if (operator === "*") {
-        result *= factor;
-      } else if(operator === "/") {
-        if (!factor) {
+        result = result * factor;
+      } else if (operator === "/") {
+        if (factor) {
+          result = result / factor;
+        } else {
           this._errorOccured = true;
           this._errorMessage = ErrorMessages.divideByZero;
           this._lastResult = Infinity;
           return this._lastResult;
-        } else {
-          result /= factor;
         }
       }
     }
@@ -75,6 +82,14 @@ export class FormulaEvaluator {
     return result;
   }
 
+  /**
+   * 
+   * divide the term into factors and calculate the result, where factors combine to the term with * and /
+   * 
+   * @returns the result of the formula
+   * 
+   * 
+   */
   private extractFactor(): number {
     if (this._errorOccured) {
       return this._lastResult;
@@ -95,22 +110,21 @@ export class FormulaEvaluator {
       result = Number(token);
       this._lastResult = result;
 
+      // if the token is a cell reference get the value of the cell
+    } else if (this.isCellReference(token)) {
+      [result, this._errorMessage] = this.getCellValue(token);
+
+      if (this._errorMessage) {
+        this._errorOccured = true;
+        this._lastResult = result;
+      }
+
       // if the token is a left parenthesis, we can treat the content in the parentheses as a new formula
     } else if (token === "(") {
       result = this.update();
       if (!this._currentFormula.length || this._currentFormula.shift() !== ")") {
         this._errorOccured = true;
         this._errorMessage = ErrorMessages.missingParentheses;
-        this._lastResult = result;
-      }
-
-      // if the token is a cell reference get the value of the cell
-    } else if (this.isCellReference(token)) {
-      [result, this._errorMessage] = this.getCellValue(token);
-
-      // if the cell value is a number set the result to the number
-      if (this._errorMessage) {
-        this._errorOccured = true;
         this._lastResult = result;
       }
 
@@ -123,27 +137,7 @@ export class FormulaEvaluator {
   }
 
   /**
-    * place holder for the evaluator.   I am not sure what the type of the formula is yet 
-    * I do know that there will be a list of tokens so i will return the length of the array
-    * 
-    * I also need to test the error display in the front end so i will set the error message to
-    * the error messages found In GlobalDefinitions.ts
-    * 
-    * according to this formula.
-    * 
-    7 tokens partial: "#ERR",
-    8 tokens divideByZero: "#DIV/0!",
-    9 tokens invalidCell: "#REF!",
-  10 tokens invalidFormula: "#ERR",
-  11 tokens invalidNumber: "#ERR",
-  12 tokens invalidOperator: "#ERR",
-  13 missingParentheses: "#ERR",
-  0 tokens emptyFormula: "#EMPTY!",
-
-                    When i get back from my quest to save the world from the evil thing i will fix.
-                      (if you are in a hurry you can fix it yourself)
-                               Sincerely 
-                               Bilbo
+    * evaluate the formula
     * 
    */
 
@@ -167,14 +161,13 @@ export class FormulaEvaluator {
     let result = this.update();
     this._result = result;
 
-    // if there are still tokens in the formula set the errorOccured flag
-    // if an error has occured then we dont update the error message
+    // if there are still tokens in the formula after evaluating then set the errorOccured flag
     if (this._currentFormula.length > 0 && !this._errorOccured) {
       this._errorOccured = true;
       this._errorMessage = ErrorMessages.invalidFormula;
     }
 
-    // if an error occured  and the message is PARTIAL return the last result
+    // if an error occured set the result the last result
     if (this._errorOccured) {
       this._result = this._lastResult;
     }
